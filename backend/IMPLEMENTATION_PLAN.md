@@ -1931,6 +1931,8 @@ src/
 
 ### Milestone 1: Rust Project Skeleton
 
+Status: complete as of 2026-06-04.
+
 Build:
 
 - Cargo project
@@ -1948,6 +1950,8 @@ Done when:
 ---
 
 ### Milestone 2: Domain Types
+
+Status: complete as of 2026-06-04.
 
 Build:
 
@@ -1972,6 +1976,8 @@ Done when:
 
 ### Milestone 3: Persistence Traits and MemoryPersistence
 
+Status: complete as of 2026-06-04.
+
 Build:
 
 - Repository traits
@@ -1994,6 +2000,8 @@ Done when:
 
 ### Milestone 4: RoomService
 
+Status: complete as of 2026-06-04.
+
 Build:
 
 - Create room
@@ -2014,6 +2022,8 @@ Done when:
 ---
 
 ### Milestone 5: EventBus
+
+Status: complete as of 2026-06-04.
 
 Build:
 
