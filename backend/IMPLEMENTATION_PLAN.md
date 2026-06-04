@@ -2037,6 +2037,10 @@ Done when:
 - Service actions can publish events.
 - Test subscriber receives room events.
 
+Verification:
+
+- 2026-06-04: verified milestones 1-5 with `cargo fmt --check`, `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo run`, and `GET /health`. Added service-level coverage that room and admin subscribers receive all current RoomService events.
+
 ---
 
 ### Milestone 6: WebSocket Protocol Skeleton

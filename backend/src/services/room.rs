@@ -347,7 +347,7 @@ mod tests {
     use super::*;
     use crate::{
         domain::{RoleName, RoomStatus},
-        event_bus::{EventTopic, LiveEvent, RoomEvent},
+        event_bus::{EventMessage, EventTopic, LiveEvent, RoomEvent},
         persistence::MemoryPersistence,
     };
 
@@ -357,6 +357,16 @@ mod tests {
 
     fn second_player() -> PlayerId {
         PlayerId::new("missing_player")
+    }
+
+    fn assert_next_event(
+        subscriber: &mut tokio::sync::broadcast::Receiver<EventMessage>,
+        topic: EventTopic,
+        event: RoomEvent,
+    ) {
+        let message = subscriber.try_recv().expect("room event is available");
+        assert_eq!(message.topic, topic);
+        assert_eq!(message.event, LiveEvent::Room(event));
     }
 
     #[tokio::test]
@@ -430,6 +440,137 @@ mod tests {
                 player: (&joined.player).into(),
             })
         );
+    }
+
+    #[tokio::test]
+    async fn service_actions_publish_room_and_admin_events() {
+        let event_bus = Arc::new(EventBus::default());
+        let service =
+            RoomService::with_event_bus(Arc::new(MemoryPersistence::new()), Arc::clone(&event_bus));
+        let mut admin_subscriber = event_bus.subscribe(EventTopic::Admin);
+        let room = service.create_room().await.expect("room creation succeeds");
+        let mut room_subscriber = event_bus.subscribe(EventTopic::Room(room.id.clone()));
+        let room_topic = EventTopic::Room(room.id.clone());
+        let room_created = RoomEvent::RoomCreated {
+            room: (&room).into(),
+        };
+
+        assert_next_event(&mut admin_subscriber, EventTopic::Admin, room_created);
+
+        let joined = service
+            .join_room(&room.id, "Ada")
+            .await
+            .expect("join succeeds");
+        let player_joined = RoomEvent::PlayerJoined {
+            room_id: room.id.clone(),
+            player: (&joined.player).into(),
+        };
+        assert_next_event(
+            &mut room_subscriber,
+            room_topic.clone(),
+            player_joined.clone(),
+        );
+        assert_next_event(&mut admin_subscriber, EventTopic::Admin, player_joined);
+
+        let slot_id = room.slots[0].id.clone();
+        service
+            .claim_slot(&room.id, &joined.player.id, &slot_id)
+            .await
+            .expect("claim succeeds");
+        let slot_claimed = RoomEvent::SlotClaimed {
+            room_id: room.id.clone(),
+            slot_id: slot_id.clone(),
+            player_id: joined.player.id.clone(),
+        };
+        assert_next_event(
+            &mut room_subscriber,
+            room_topic.clone(),
+            slot_claimed.clone(),
+        );
+        assert_next_event(&mut admin_subscriber, EventTopic::Admin, slot_claimed);
+
+        service
+            .update_prompt(&room.id, &joined.player.id, &slot_id, "Hold north")
+            .await
+            .expect("prompt update succeeds");
+        let prompt_updated = RoomEvent::SlotPromptUpdated {
+            room_id: room.id.clone(),
+            slot_id: slot_id.clone(),
+            updated_by: joined.player.id.clone(),
+        };
+        assert_next_event(
+            &mut room_subscriber,
+            room_topic.clone(),
+            prompt_updated.clone(),
+        );
+        assert_next_event(&mut admin_subscriber, EventTopic::Admin, prompt_updated);
+
+        service
+            .rename_player(&room.id, &joined.player.id, "Grace")
+            .await
+            .expect("rename succeeds");
+        let player_renamed = RoomEvent::PlayerRenamed {
+            room_id: room.id.clone(),
+            player_id: joined.player.id.clone(),
+            display_name: "Grace".to_owned(),
+        };
+        assert_next_event(
+            &mut room_subscriber,
+            room_topic.clone(),
+            player_renamed.clone(),
+        );
+        assert_next_event(&mut admin_subscriber, EventTopic::Admin, player_renamed);
+
+        service
+            .release_slot(&room.id, &joined.player.id, &slot_id)
+            .await
+            .expect("release succeeds");
+        let slot_released = RoomEvent::SlotReleased {
+            room_id: room.id.clone(),
+            slot_id,
+        };
+        assert_next_event(
+            &mut room_subscriber,
+            room_topic.clone(),
+            slot_released.clone(),
+        );
+        assert_next_event(&mut admin_subscriber, EventTopic::Admin, slot_released);
+
+        service.lock_room(&room.id).await.expect("lock succeeds");
+        let room_locked = RoomEvent::RoomLocked {
+            room_id: room.id.clone(),
+        };
+        assert_next_event(
+            &mut room_subscriber,
+            room_topic.clone(),
+            room_locked.clone(),
+        );
+        assert_next_event(&mut admin_subscriber, EventTopic::Admin, room_locked);
+
+        service
+            .unlock_room(&room.id)
+            .await
+            .expect("unlock succeeds");
+        let room_unlocked = RoomEvent::RoomUnlocked {
+            room_id: room.id.clone(),
+        };
+        assert_next_event(
+            &mut room_subscriber,
+            room_topic.clone(),
+            room_unlocked.clone(),
+        );
+        assert_next_event(&mut admin_subscriber, EventTopic::Admin, room_unlocked);
+
+        service
+            .leave_room(&room.id, &joined.player.id)
+            .await
+            .expect("leave succeeds");
+        let player_left = RoomEvent::PlayerLeft {
+            room_id: room.id,
+            player_id: joined.player.id,
+        };
+        assert_next_event(&mut room_subscriber, room_topic, player_left.clone());
+        assert_next_event(&mut admin_subscriber, EventTopic::Admin, player_left);
     }
 
     #[tokio::test]
